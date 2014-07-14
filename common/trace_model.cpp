@@ -209,7 +209,7 @@ float Bool   ::toFloat(void) const { return static_cast<float>(value); }
 float SInt   ::toFloat(void) const { return static_cast<float>(value); }
 float UInt   ::toFloat(void) const { return static_cast<float>(value); }
 float Float  ::toFloat(void) const { return value; }
-float Double ::toFloat(void) const { return value; }
+float Double ::toFloat(void) const { return float(value); }
 float Repr   ::toFloat(void) const { return machineValue->toFloat(); }
 
 

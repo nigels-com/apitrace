@@ -235,7 +235,7 @@ public:
     }
 
     void visit(Backtrace & backtrace) {
-        for (int i = 0; i < backtrace.size(); i ++) {
+        for (size_t i = 0; i < backtrace.size(); i ++) {
             visit(backtrace[i]);
             os << "\n";
         }

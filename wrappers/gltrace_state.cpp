@@ -27,25 +27,59 @@
 
 #include <assert.h>
 
-#include <map>
-#if defined(HAVE_TR1_MEMORY)
-#include <tr1/memory>
+// Default to multi-threading support using TLS,
+// otherwise specify -DAPITRACE_TLS=0
+//
+// apitrace TLS support requires C++ TR1 (except Windows)
+// and pthreads for Linux/Mac/Android
+
+#ifndef APITRACE_TLS
+# if defined(_MSC_VER) && _MSC_VER<1600
+#  define APITRACE_TLS 0
+# else
+#  define APITRACE_TLS 1
+# endif
 #endif
+
+// TLS headers
+
+#if APITRACE_TLS
+#include <map>
+#if defined(_MSC_VER) || (defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 1090)
 #include <memory>
+#else
+#include <tr1/memory>
+#include <memory>
+#endif
+#endif
 
 #include <os_thread.hpp>
 #include <glproc.hpp>
 #include <gltrace.hpp>
 
+// TODO - this is needed for Regal purposes only
+
+namespace Regal { namespace Trace { 
+
+extern void glViewport( GLint x, GLint y, GLsizei width, GLsizei height );
+extern void glScissor( GLint x, GLint y, GLsizei width, GLsizei height );
+
+} }
+
 namespace gltrace {
 
-#if !defined(HAVE_TR1_MEMORY)
+#if APITRACE_TLS
+#if defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 1090
 typedef std::shared_ptr<Context> context_ptr_t;
 #else
 typedef std::tr1::shared_ptr<Context> context_ptr_t;
 #endif
-static std::map<uintptr_t, context_ptr_t> context_map;
 static os::recursive_mutex context_map_mutex;
+#else
+typedef Context *context_ptr_t;
+#endif
+
+static std::map<uintptr_t, context_ptr_t> context_map;
 
 class ThreadState {
 public:
@@ -59,8 +93,21 @@ public:
     {
         current_context = dummy_context;
     }
+
+#if !APITRACE_TLS
+    ~ThreadState()
+    {
+      delete dummy_context;
+      if (current_context!=dummy_context)
+        delete current_context;
+    }
+#endif
+
 };
 
+#if APITRACE_TLS
+
+#if _WIN32
 static OS_THREAD_SPECIFIC_PTR(ThreadState) thread_state;
 
 static ThreadState *get_ts(void)
@@ -72,6 +119,27 @@ static ThreadState *get_ts(void)
 
     return ts;
 }
+#else
+#include <pthread.h>
+pthread_key_t thread_state_key = 0;
+static ThreadState *get_ts() {
+    if( thread_state_key == 0 ) {
+        pthread_key_create( &thread_state_key, NULL );
+    }
+    ThreadState *ts = static_cast<ThreadState *>( pthread_getspecific( thread_state_key ) );
+    if( !ts ) {
+        ts = new ThreadState;
+        pthread_setspecific( thread_state_key, ts );
+    }
+    return ts;
+}
+
+#endif
+
+#else
+static ThreadState thread_state;
+static ThreadState *get_ts() { return &thread_state; }
+#endif
 
 static void _retainContext(context_ptr_t ctx)
 {
@@ -80,10 +148,14 @@ static void _retainContext(context_ptr_t ctx)
 
 void retainContext(uintptr_t context_id)
 {
+#if APITRACE_TLS
     context_map_mutex.lock();
+#endif
     if (context_map.find(context_id) != context_map.end())
         _retainContext(context_map[context_id]);
+#if APITRACE_TLS
     context_map_mutex.unlock();
+#endif
 }
 
 static bool _releaseContext(context_ptr_t ctx)
@@ -100,7 +172,10 @@ bool releaseContext(uintptr_t context_id)
 {
     bool res = false;
 
+#if APITRACE_TLS
     context_map_mutex.lock();
+#endif
+
     /*
      * This can potentially called (from glX) with an invalid context_id,
      * so don't assert on it being valid.
@@ -110,7 +185,9 @@ bool releaseContext(uintptr_t context_id)
         if (res)
             context_map.erase(context_id);
     }
+#if APITRACE_TLS
     context_map_mutex.unlock();
+#endif
 
     return res;
 }
@@ -125,12 +202,16 @@ void createContext(uintptr_t context_id)
 
     context_ptr_t ctx(new Context);
 
+#if APITRACE_TLS
     context_map_mutex.lock();
+#endif
 
     _retainContext(ctx);
     context_map[context_id] = ctx;
 
+#if APITRACE_TLS
     context_map_mutex.unlock();
+#endif
 }
 
 void setContext(uintptr_t context_id)
@@ -138,12 +219,16 @@ void setContext(uintptr_t context_id)
     ThreadState *ts = get_ts();
     context_ptr_t ctx;
 
+#if APITRACE_TLS
     context_map_mutex.lock();
+#endif
 
     assert(context_map.find(context_id) != context_map.end());
     ctx = context_map[context_id];
 
+#if APITRACE_TLS
     context_map_mutex.unlock();
+#endif
 
     ts->current_context = ctx;
 
@@ -170,8 +255,8 @@ void setContext(uintptr_t context_id)
          * we might be called before both are set, so ignore empty boxes.
          */
         if (viewport[2] && viewport[3] && scissor[2] && scissor[3]) {
-            glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-            glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+            ::Regal::Trace::glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+            ::Regal::Trace::glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
             ctx->bound = true;
         }
     }
@@ -186,7 +271,11 @@ void clearContext(void)
 
 Context *getContext(void)
 {
+#if APITRACE_TLS
     return get_ts()->current_context.get();
+#else
+    return get_ts()->current_context;
+#endif
 }
 
 }

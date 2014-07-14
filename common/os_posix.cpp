@@ -66,7 +66,7 @@ String
 getProcessName(void)
 {
     String path;
-    size_t size = PATH_MAX;
+    ssize_t size = PATH_MAX;
     char *buf = path.buf(size);
 
     // http://stackoverflow.com/questions/1023306/finding-current-executables-path-without-proc-self-exe
