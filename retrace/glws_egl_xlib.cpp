@@ -327,6 +327,25 @@ createDrawable(const Visual *visual, int width, int height, bool pbuffer)
     return new EglDrawable(visual, width, height, pbuffer);
 }
 
+bool
+bindApi(Api api)
+{
+    EGLenum eglApi;
+    switch (api) {
+    case API_GL:
+        eglApi = EGL_OPENGL_API;
+        break;
+    case API_GLES:
+        eglApi = EGL_OPENGL_ES_API;
+        break;
+    default:
+        assert(0);
+        return false;
+    }
+
+    return eglBindAPI(eglApi);
+}
+
 Context *
 createContext(const Visual *_visual, Context *shareContext, bool debug)
 {
@@ -341,6 +360,9 @@ createContext(const Visual *_visual, Context *shareContext, bool debug)
     }
 
     EGLint api = eglQueryAPI();
+
+    ProfileDesc desc;
+    getProfileDesc(profile, desc);
 
     switch (profile) {
     case PROFILE_COMPAT:
@@ -358,12 +380,9 @@ createContext(const Visual *_visual, Context *shareContext, bool debug)
         break;
     default:
         if (has_EGL_KHR_create_context) {
-            unsigned major, minor;
-            bool core;
-            getProfileVersion(profile, major, minor, core);
-            attribs.add(EGL_CONTEXT_MAJOR_VERSION_KHR, major);
-            attribs.add(EGL_CONTEXT_MINOR_VERSION_KHR, minor);
-            if (core) {
+            attribs.add(EGL_CONTEXT_MAJOR_VERSION_KHR, desc.major);
+            attribs.add(EGL_CONTEXT_MINOR_VERSION_KHR, desc.minor);
+            if (desc.core) {
                 attribs.add(EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR);
             }
         } else {

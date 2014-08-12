@@ -58,14 +58,22 @@ enum Profile {
 };
 
 
-static inline bool
-isCoreProfile(Profile profile) {
-    return (profile & 0x100) == 0x100;
-}
+enum Api {
+    API_GL = 0,
+    API_GLES
+};
+
+
+struct ProfileDesc {
+    Api api;
+    unsigned major;
+    unsigned minor;
+    bool core;
+};
 
 
 void
-getProfileVersion(Profile profile, unsigned &major, unsigned &minor, bool &core);
+getProfileDesc(Profile profile, ProfileDesc &desc);
 
 
 bool
@@ -192,6 +200,9 @@ createVisual(bool doubleBuffer = false, unsigned samples = 1, Profile profile = 
 
 Drawable *
 createDrawable(const Visual *visual, int width, int height, bool pbuffer = false);
+
+bool
+bindApi(Api api);
 
 Context *
 createContext(const Visual *visual, Context *shareContext = 0, bool debug = false);

@@ -39,6 +39,9 @@ namespace glws {
 static unsigned glxVersion = 0;
 static const char *extensions = 0;
 static bool has_GLX_ARB_create_context = false;
+static bool has_GLX_ARB_create_context_profile = false;
+static bool has_GLX_EXT_create_context_es_profile = false;
+static bool has_GLX_EXT_create_context_es2_profile = false;
 
 
 class GlxVisual : public Visual
@@ -160,7 +163,16 @@ init(void) {
     glxVersion = (major << 8) | minor;
 
     extensions = glXQueryExtensionsString(display, screen);
-    has_GLX_ARB_create_context = checkExtension("GLX_ARB_create_context", extensions);
+
+#define CHECK_EXTENSION(name) \
+    has_##name = checkExtension(#name, extensions)
+
+    CHECK_EXTENSION(GLX_ARB_create_context);
+    CHECK_EXTENSION(GLX_ARB_create_context_profile);
+    CHECK_EXTENSION(GLX_EXT_create_context_es_profile);
+    CHECK_EXTENSION(GLX_EXT_create_context_es2_profile);
+
+#undef CHECK_EXTENSION
 }
 
 void
@@ -229,6 +241,12 @@ createDrawable(const Visual *visual, int width, int height, bool pbuffer)
     return new GlxDrawable(visual, width, height, pbuffer);
 }
 
+bool
+bindApi(Api api)
+{
+    return true;
+}
+
 Context *
 createContext(const Visual *_visual, Context *shareContext, bool debug)
 {
@@ -249,22 +267,34 @@ createContext(const Visual *_visual, Context *shareContext, bool debug)
             attribs.add(GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_DEBUG_BIT_ARB);
         }
 
+        ProfileDesc desc;
+        getProfileDesc(profile, desc);
+
         switch (profile) {
         case PROFILE_COMPAT:
             break;
         case PROFILE_ES1:
-            return NULL;
+            if (!has_GLX_EXT_create_context_es_profile) {
+                return NULL;
+            }
+            attribs.add(GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_ES_PROFILE_BIT_EXT);
+            attribs.add(GLX_CONTEXT_MAJOR_VERSION_ARB, 1);
+            break;
         case PROFILE_ES2:
+            if (!has_GLX_EXT_create_context_es2_profile) {
+                return NULL;
+            }
             attribs.add(GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_ES2_PROFILE_BIT_EXT);
+            attribs.add(GLX_CONTEXT_MAJOR_VERSION_ARB, 2);
             break;
         default:
             {
-                unsigned major, minor;
-                bool core;
-                getProfileVersion(profile, major, minor, core);
-                attribs.add(GLX_CONTEXT_MAJOR_VERSION_ARB, major);
-                attribs.add(GLX_CONTEXT_MINOR_VERSION_ARB, minor);
-                if (core) {
+                attribs.add(GLX_CONTEXT_MAJOR_VERSION_ARB, desc.major);
+                attribs.add(GLX_CONTEXT_MINOR_VERSION_ARB, desc.minor);
+                if (desc.core) {
+                    if (!has_GLX_ARB_create_context_profile) {
+                        return NULL;
+                    }
                     attribs.add(GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB);
                 }
                 break;

@@ -328,10 +328,10 @@ public:
                 shareContext->create(wglDrawable);
             }
 
-            unsigned major, minor;
-            bool core;
-            getProfileVersion(profile, major, minor, core);
-            if (major >= 3 || core) {
+            ProfileDesc desc;
+            getProfileDesc(profile, desc);
+
+            if (desc.major >= 3 || desc.core) {
                 // We need to create context through WGL_ARB_create_context.  This
                 // implies binding a temporary context to get the extensions strings
                 // and function pointers.
@@ -367,9 +367,9 @@ public:
                 wglDeleteContext(hglrc);
 
                 Attributes<int> attribs;
-                attribs.add(WGL_CONTEXT_MAJOR_VERSION_ARB, major);
-                attribs.add(WGL_CONTEXT_MINOR_VERSION_ARB, minor);
-                if (core) {
+                attribs.add(WGL_CONTEXT_MAJOR_VERSION_ARB, desc.major);
+                attribs.add(WGL_CONTEXT_MINOR_VERSION_ARB, desc.minor);
+                if (desc.core) {
                     attribs.add(WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB);
                 }
                 if (debug) {
@@ -414,14 +414,17 @@ init(void) {
     const char * libgl_filename = getenv("TRACE_LIBGL");
 
     if (libgl_filename) {
-        pfnChoosePixelFormat = &wglChoosePixelFormat;
-        pfnSetPixelFormat = &wglSetPixelFormat;
-        pfnSwapBuffers = &wglSwapBuffers;
+        _libGlHandle = LoadLibraryA(libgl_filename);
+        if (_libGlHandle) {
+            pfnChoosePixelFormat = (PFN_WGLCHOOSEPIXELFORMAT)GetProcAddress(_libGlHandle, "wglChoosePixelFormat");
+            pfnSetPixelFormat = (PFN_WGLSETPIXELFORMAT)GetProcAddress(_libGlHandle, "&wglSetPixelFormat");
+            pfnSwapBuffers = (PFN_WGLSWAPBUFFERS)GetProcAddress(_libGlHandle, "wglSwapBuffers");
+        }
     } else {
         libgl_filename = "OPENGL32";
+        _libGlHandle = LoadLibraryA(libgl_filename);
     }
 
-    _libGlHandle = LoadLibraryA(libgl_filename);
     if (!_libGlHandle) {
         std::cerr << "error: unable to open " << libgl_filename << "\n";
         exit(1);
@@ -457,6 +460,12 @@ Drawable *
 createDrawable(const Visual *visual, int width, int height, bool pbuffer)
 {
     return new WglDrawable(visual, width, height, pbuffer);
+}
+
+bool
+bindApi(Api api)
+{
+    return true;
 }
 
 Context *
